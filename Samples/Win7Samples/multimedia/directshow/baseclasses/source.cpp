@@ -19,6 +19,7 @@
 // section from within FillBuffer().
 
 #include <streams.h>
+#include <chrono>
 
 
 //
@@ -461,7 +462,9 @@ HRESULT CSourceStream::DoBufferProcessingLoop(void) {
     Command com;
 
     OnThreadStartPlay();
+    auto start = std::chrono::high_resolution_clock::now();
 
+    REFERENCE_TIME st, ed;
     do {
 	while (!CheckRequest(&com)) {
 
@@ -489,6 +492,12 @@ HRESULT CSourceStream::DoBufferProcessingLoop(void) {
                   DbgLog((LOG_TRACE, 2, TEXT("Deliver() returned %08x; stopping"), hr));
                   return S_OK;
                 }
+                auto end = std::chrono::high_resolution_clock::now();
+                auto processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+                pSample->GetMediaTime(&st, &ed);
+                auto interval = ed - st;
+                if (33 > processingTime)
+                    Sleep(33 - processingTime);
 
 	    } else if (hr == S_FALSE) {
                 // derived class wants us to stop pushing data
