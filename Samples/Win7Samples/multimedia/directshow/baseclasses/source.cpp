@@ -462,68 +462,63 @@ HRESULT CSourceStream::DoBufferProcessingLoop(void) {
     Command com;
 
     OnThreadStartPlay();
-    auto start = std::chrono::high_resolution_clock::now();
 
-    REFERENCE_TIME st, ed;
     do {
-	while (!CheckRequest(&com)) {
+	    while (!CheckRequest(&com)) {
 
-	    IMediaSample *pSample;
+	        IMediaSample *pSample;
 
-	    HRESULT hr = GetDeliveryBuffer(&pSample,NULL,NULL,0);
-	    if (FAILED(hr)) {
-                Sleep(1);
-		continue;	// go round again. Perhaps the error will go away
-			    // or the allocator is decommited & we will be asked to
-			    // exit soon.
-	    }
+	        HRESULT hr = GetDeliveryBuffer(&pSample,NULL,NULL,0);
+	        if (FAILED(hr)) {
+                Sleep(30);
+		        continue;	// go round again. Perhaps the error will go away
+			        // or the allocator is decommited & we will be asked to
+			        // exit soon.
+	        }
+            auto start = std::chrono::high_resolution_clock::now();
+	        // Virtual function user will override.
+	        hr = FillBuffer(pSample);
 
-	    // Virtual function user will override.
-	    hr = FillBuffer(pSample);
-
-	    if (hr == S_OK) {
-		hr = Deliver(pSample);
+	        if (hr == S_OK) {
+            
+		        hr = Deliver(pSample);
                 pSample->Release();
 
                 // downstream filter returns S_FALSE if it wants us to
                 // stop or an error if it's reporting an error.
-                if(hr != S_OK)
+                if (hr != S_OK)
                 {
-                  DbgLog((LOG_TRACE, 2, TEXT("Deliver() returned %08x; stopping"), hr));
-                  return S_OK;
+                    DbgLog((LOG_TRACE, 2, TEXT("Deliver() returned %08x; stopping"), hr));
+                    return S_OK;
                 }
                 auto end = std::chrono::high_resolution_clock::now();
                 auto processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-                pSample->GetMediaTime(&st, &ed);
-                auto interval = ed - st;
                 if (33 > processingTime)
                     Sleep(33 - processingTime);
 
-	    } else if (hr == S_FALSE) {
+	        } else if (hr == S_FALSE) {
                 // derived class wants us to stop pushing data
-		pSample->Release();
-		DeliverEndOfStream();
-		return S_OK;
-	    } else {
+		        pSample->Release();
+		        DeliverEndOfStream();
+		        return S_OK;
+	        } else {
                 // derived class encountered an error
                 pSample->Release();
-		DbgLog((LOG_ERROR, 1, TEXT("Error %08lX from FillBuffer!!!"), hr));
+		        DbgLog((LOG_ERROR, 1, TEXT("Error %08lX from FillBuffer!!!"), hr));
                 DeliverEndOfStream();
                 m_pFilter->NotifyEvent(EC_ERRORABORT, hr, 0);
                 return hr;
+	        }
+            // all paths release the sample
 	    }
 
-            // all paths release the sample
-	}
-
         // For all commands sent to us there must be a Reply call!
-
-	if (com == CMD_RUN || com == CMD_PAUSE) {
-	    Reply(NOERROR);
-	} else if (com != CMD_STOP) {
-	    Reply((DWORD) E_UNEXPECTED);
-	    DbgLog((LOG_ERROR, 1, TEXT("Unexpected command!!!")));
-	}
+	    if (com == CMD_RUN || com == CMD_PAUSE) {
+	        Reply(NOERROR);
+	    } else if (com != CMD_STOP) {
+	        Reply((DWORD) E_UNEXPECTED);
+	        DbgLog((LOG_ERROR, 1, TEXT("Unexpected command!!!")));
+	    }
     } while (com != CMD_STOP);
 
     return S_FALSE;
